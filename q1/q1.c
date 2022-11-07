@@ -9,14 +9,6 @@
 #include <sys/wait.h>
 #include <errno.h>
 
-// machines -> seats available
-// students -> fans
-// students leave when clothes washed -> fans leave on goals against
-// patience variable for both
-// no types of fans, no groups, goal chances
-// use stuct timespec and semaphore to handle patience exiting bit
-// use cond wait for exiting on completion of task or to wait on machine
-
 // colours for printing
 void yellow()
 {
@@ -142,31 +134,44 @@ void *student_init(void *args)
     important_ts.tv_sec += student_ptr[id]->patience;
     pthread_mutex_lock(&machine_mutex);
     // printf("Patience time %ld of id %d\n", important_ts.tv_sec - globalstart, id + 1);
+
+    int rc = -1;
     while (machines_avail == 0)
-        pthread_cond_timedwait(&condition_machine, &machine_mutex, &important_ts);
-    clock_gettime(CLOCK_REALTIME, &ts1);
-    if (id == 2){
-        // printf("patience time is %ld\n", important_ts.tv_sec - globalstart);
-        printf("time is %ld\n", ts1.tv_sec - globalstart);
-    }
-    if (ts1.tv_sec > time_saver + student_ptr[id]->patience)
     {
-        // printf("time: %ld\n", ts1.tv_sec - globalstart);
-        // printf("patience\n");
-        pthread_mutex_unlock(&machine_mutex);
-
-        clock_gettime(CLOCK_REALTIME, &ts1);
-
-        // patience of student has run out
-        red();
-        printf("%ld: Student %d leaves without washing\n", ts1.tv_sec - globalstart, id + 1);
-        reset();
-
-        pthread_mutex_lock(&another_one);
-        count++;
-        pthread_mutex_unlock(&another_one);
-        return NULL;
+        rc = pthread_cond_timedwait(&condition_machine, &machine_mutex, &important_ts);
+        if (rc == ETIMEDOUT)
+        {
+            break;
+        }
     }
+
+    clock_gettime(CLOCK_REALTIME, &ts1);
+    // if (ts1.tv_sec > time_saver + student_ptr[id]->patience )
+    // // if(rc==ETIMEDOUT && machines_avail==0)
+    // {
+    //         pthread_mutex_unlock(&machine_mutex);
+
+    //     // printf("patience time is %ld\n", important_ts.tv_sec - globalstart);
+    //     printf("time is %ld\n", ts1.tv_sec - globalstart);
+    //     // }
+    //     // if (ts1.tv_sec > time_saver + student_ptr[id]->patience)
+    //     // {
+    //     // printf("time: %ld\n", ts1.tv_sec - globalstart);
+    //     // printf("patience\n");
+    //     // pthread_mutex_unlock(&machine_mutex);
+
+    //     clock_gettime(CLOCK_REALTIME, &ts1);
+
+    //     // patience of student has run out
+    //     red();
+    //     printf("%ld: Student %d leaves without washing\n", ts1.tv_sec - globalstart, id + 1);
+    //     reset();
+
+    //     pthread_mutex_lock(&another_one);
+    //     count++;
+    //     pthread_mutex_unlock(&another_one);
+    //     return NULL;
+    // }
     pthread_mutex_unlock(&machine_mutex);
 
     // if (s == -1)
@@ -202,12 +207,12 @@ void *student_init(void *args)
         green();
         printf("%ld: Student %d starts washing\n", ts1.tv_sec - globalstart, id + 1);
         reset();
-        sem_wait(&machines);
+        // sem_wait(&machines);
         pthread_mutex_unlock(&machine_mutex);
         sleep(student_ptr[id]->wash_time);
         pthread_mutex_lock(&machine_mutex);
         machines_avail++;
-        sem_post(&machines);
+        // sem_post(&machines);
 
         pthread_mutex_unlock(&machine_mutex);
 
@@ -217,7 +222,29 @@ void *student_init(void *args)
         reset();
         pthread_cond_signal(&condition_machine);
     }
+    else
+    {
+        pthread_mutex_unlock(&machine_mutex);
+        // printf("time is %ld\n", ts1.tv_sec - globalstart);
+        // }
+        // if (ts1.tv_sec > time_saver + student_ptr[id]->patience)
+        // {
+        // printf("time: %ld\n", ts1.tv_sec - globalstart);
+        // printf("patience\n");
+        // pthread_mutex_unlock(&machine_mutex);
 
+        clock_gettime(CLOCK_REALTIME, &ts1);
+
+        // patience of student has run out
+        red();
+        printf("%ld: Student %d leaves without washing\n", ts1.tv_sec - globalstart, id + 1);
+        reset();
+
+        pthread_mutex_lock(&another_one);
+        count++;
+        pthread_mutex_unlock(&another_one);
+        return NULL;
+    }
     // if (check == 1)
 
     // int c_time;
