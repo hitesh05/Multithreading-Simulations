@@ -166,7 +166,7 @@ void dequeue()
     if (FRONT != -1 && FRONT <= REAR)
     {
         if ((FRONT + 1) > REAR)
-            FRONT = REAR - 1;
+            FRONT = REAR = -1;
         else
             FRONT++;
     }
@@ -244,14 +244,15 @@ void get_input()
     while (i < num_limited_ingreds)
     {
         scanf("%d", &ingredient_ptr[i].qty);
-        ingredient_ptr[i].id = i + 1;
+        ingredient_ptr[i].id = i;
         i++;
     }
     i = 0;
     while (i < num_chefs)
     {
         scanf("%d %d", &chef_ptr[i].arr_time, &chef_ptr[i].exit_time);
-        chef_ptr[i].id = i + 1;
+        // chef_ptr[i].id = i + 1;
+        chef_ptr[i].id = i;
         chef_ptr[i].status = 0; // sleeping
         int x = chef_ptr[i].arr_time;
         if (x == 0)
@@ -275,7 +276,7 @@ void get_input()
             order_ptr[i].pizzas[j].status = 1; // initialised
             j++;
         }
-        order_ptr[i].id = i + 1;
+        order_ptr[i].id = i;
         order_ptr[i].status = 1; // initialised
         order_ptr[i].num_pizzas_made = 0;
         order_ptr[i].num_pizzas_processed = 0;
@@ -359,7 +360,8 @@ void *chefinit(void *args)
 
     pthread_mutex_lock(&restaurant_check);
     activeChefs++;
-    pthread_mutex_lock(&restaurant_check);
+    pthread_mutex_unlock(&restaurant_check);
+    // printf("here11111111\n");
 
 start:
     pthread_mutex_lock(&(chef_ptr[id].chef_mutex));
@@ -373,12 +375,13 @@ start:
     clock_gettime(CLOCK_REALTIME, &ts1);
     int wait_time2 = chef_ptr[id].exit_time - chef_ptr[id].arr_time - wait_time;
     ts1.tv_sec += wait_time2;
+    // printf("here11111111\n");
 
     int rc;
     ///**********************
     /// BUSY WAITING?
     ////*******************
-    while (check_pizza_reject(id, order_pizza_q[FRONT]) == 1 || FRONT == -1)
+    while (FRONT == -1 || check_pizza_reject(id, order_pizza_q[FRONT]) == 1)
     {
         clock_gettime(CLOCK_REALTIME, &ts);
         int curr_time = ts.tv_sec - globaltime;
@@ -386,6 +389,8 @@ start:
             break;
         rc = pthread_cond_timedwait(&chef_cond, &pizza_queue, &ts1);
     }
+
+    // printf("here#######\n");
 
     clock_gettime(CLOCK_REALTIME, &ts);
     curr_time = ts.tv_sec - globaltime;
@@ -405,15 +410,14 @@ start:
                 i++;
             }
         }
+        pthread_mutex_unlock(&restaurant_check);
+        pthread_mutex_unlock(&pizza_queue);
 
         clock_gettime(CLOCK_REALTIME, &ts);
         curr_time = ts.tv_sec - globaltime;
         blue();
         printf("Chef %d exits at time %d\n", id, curr_time);
         reset();
-
-        pthread_mutex_unlock(&restaurant_check);
-        pthread_mutex_unlock(&pizza_queue);
 
         return NULL;
     }
@@ -422,19 +426,19 @@ start:
     int order_id = order_pizza_id_q[FRONT];
     int total_pizzas = order_ptr[order_id].num_pizzas;
 
-    dequeue;
+    dequeue();
     pthread_mutex_unlock(&pizza_queue);
 
     clock_gettime(CLOCK_REALTIME, &ts);
-    int check_time = (chef_ptr[id].arr_time + pizza_ptr[pizza_id].prep_time) - chef_ptr[id].exit_time; // time left comapred with time taken to prepare pizza
-    if (check_time > 0)
+    int check_time = (chef_ptr[id].arr_time + pizza_ptr[pizza_id].prep_time); // time left comapred with time taken to prepare pizza
+    if (check_time > chef_ptr[id].exit_time)
     {
         blue();
         printf("Chef %d is rejecting the pizza %d from order %d due to lack of time.\n", id, pizza_id, order_id);
         reset();
         int idx = chef_ptr[id].rejectIndex;
-        chef_ptr[id].rejectArrPizzId[idx] = pizza_id;
-        chef_ptr[id].rejectIndex++;
+        chef_ptr[id].rejectArrPizzId[chef_ptr[id].rejectIndex++] = pizza_id;
+        // chef_ptr[id].rejectIndex++;
         rejected_due_to_time = true;
         goto end;
     }
@@ -445,16 +449,27 @@ start:
 
     pthread_mutex_lock(&ingredient_lock);
     int i = 0;
-    while (i < order_ptr[order_id].num_pizzas)
-    {
+    // while (i < order_ptr[order_id].num_pizzas)
+    // {
         int pid = order_ptr[order_id].pizzas[i].id;
-        if (pizza_id == pid)
-        {
+        // if (pizza_id == pid)
+        // {
             int checker = true;
             int k = 0;
+            // printf("ingredient ptr:");
+            // for(int j=0;j<num_limited_ingreds;j++){
+            //     printf("%d ", ingredient_ptr[j].qty);
+            // }
+            // printf("\n");
+            // printf("pizza ptr num ingred: %d\n", pizza_ptr[pizza_id].num_ingredients);
+            // printf("ingreds have: \n");
+            // for(int j=0;j<pizza_ptr[pizza_id].num_ingredients;j++){
+            //     printf("%d ", ingredient_ptr[pizza_ptr[pizza_id].ingredients[j]].qty);
+            // }
+            // printf("\n");
             while (k < pizza_ptr[pizza_id].num_ingredients)
             {
-                if (ingredient_ptr[pizza_ptr[pizza_id].ingredients[k] - 1].qty == 0)
+                if (ingredient_ptr[pizza_ptr[pizza_id].ingredients[k]-1].qty == 0)
                 {
                     checker = false;
                     break;
@@ -473,13 +488,13 @@ start:
             k = 0;
             while (k < pizza_ptr[pizza_id].num_ingredients)
             {
-                ingredient_ptr[pizza_ptr[pizza_id].ingredients[k]].qty--;
+                ingredient_ptr[pizza_ptr[pizza_id].ingredients[k]-1].qty--;
                 k++;
             }
-            break;
-        }
-        i++;
-    }
+    //         break;
+    //     }
+    //     i++;
+    // }
     pthread_mutex_unlock(&ingredient_lock);
     sleep(3); // time taken to get hold of ingredients
 
@@ -492,6 +507,7 @@ start:
         {
             // oven_ptr[i] = true; // CAN CAUSE DEADLOCK
             ovenid = i;
+            pthread_mutex_unlock(&oven_mutex);
             goto chef1;
         }
         i++;
@@ -507,6 +523,8 @@ start:
         {
             // oven_ptr[i] = true; // CAN CAUSE DEADLOCK
             ovenid = i;
+            pthread_mutex_unlock(&oven_mutex);
+            goto chef1;
         }
         i++;
     }
@@ -524,7 +542,7 @@ chef1:;
 
     pthread_mutex_lock(&oven_mutex);
     oven_ptr[ovenid] = 0;
-    pthread_mutex_lock(&oven_mutex);
+    pthread_mutex_unlock(&oven_mutex);
 
     order_ptr[order_id].new_pizza = pizza_id;
     pthread_mutex_lock(&(order_ptr[order_id].order_mutex));
@@ -541,6 +559,8 @@ end:;
     else if (rejected_due_to_time == false)
     {
         pthread_mutex_lock(&(order_ptr[order_id].order_mutex));
+        // printf("here##########\nid: %d\n", id);
+
         order_ptr[order_id].num_pizzas_processed += 1;
         if (order_ptr[order_id].num_pizzas_processed == order_ptr[order_id].num_pizzas)
         {
@@ -584,7 +604,7 @@ void *orderinit(void *args)
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     int curr_time = ts.tv_sec - globaltime;
-    sleep(order_ptr[id].arr_time - curr_time);
+    sleep(order_ptr[id].arr_time);
 
     clock_gettime(CLOCK_REALTIME, &ts);
     curr_time = ts.tv_sec;
@@ -597,28 +617,30 @@ void *orderinit(void *args)
     {
         while (drive_thru_customers >= drive_thru_max_customers)
             pthread_cond_wait(&drive_next, &drive_thru);
+        pthread_mutex_unlock(&drive_thru);
     }
     else
     {
         drive_thru_customers++;
+        pthread_mutex_unlock(&drive_thru);
     }
     pthread_mutex_unlock(&drive_thru);
 
-    pthread_mutex_lock(&chefs_check);
+    pthread_mutex_lock(&restaurant_check);
     if (chefs_working > 0)
-        pthread_mutex_unlock(&chefs_check);
-    else
+        pthread_mutex_unlock(&restaurant_check);
+    else if (chefs_working == 0)
     {
         red();
         printf("Customer %d rejected.\n", id);
         printf("Customer %d exits the drive-thru zone.\n", id);
         reset();
-        pthread_mutex_unlock(&chefs_check);
+        pthread_mutex_unlock(&restaurant_check);
         return NULL;
     }
-    pthread_mutex_unlock(&chefs_check);
+    pthread_mutex_unlock(&restaurant_check);
 
-    curr_time = ts.tv_sec;
+    curr_time = ts.tv_sec - globaltime;
     int i = 0;
 
     pthread_mutex_lock(&(order_ptr[id].order_mutex));
@@ -633,9 +655,9 @@ void *orderinit(void *args)
         order_ptr[id].status = 3; // accepted
         i++;
     }
-    i = 0;
 
     pthread_mutex_lock(&pizza_queue);
+    i = 0;
     while (i < order_ptr[id].num_pizzas)
     {
         enqueue(order_ptr[id].pizzas[i].id - 1, id);
@@ -647,8 +669,12 @@ void *orderinit(void *args)
     printf("Order %d placed by customer %d awaits processing.\n", id, id);
     reset();
 
+    // printf("reach prickup time: %d\n", reach_pickup_time);
+
     // now the driver will take some time to reach pickup point
-    sleep(reach_pickup_time);
+    // sleep(reach_pickup_time);
+
+    // printf("here##########\nid: %d\n", id);
 
     // we have reached pickup point, hence one car from the drive thru has cleared
     pthread_mutex_lock(&drive_thru);
@@ -666,7 +692,8 @@ void *orderinit(void *args)
     pthread_mutex_lock(&restaurant_check);
     if (chefs_working != 0)
     {
-        pthread_mutex_unlock(&restaurant_check);
+        // pthread_mutex_unlock(&restaurant_check);
+        ;
     }
     else
     {
@@ -680,7 +707,7 @@ void *orderinit(void *args)
     }
     pthread_mutex_unlock(&restaurant_check);
 
-    while (chefs_working > 0 && order_ptr[id].num_pizzas_processed < order_ptr[id].num_pizzas)
+    while (chefs_working != 0 && order_ptr[id].num_pizzas_processed != order_ptr[id].num_pizzas)
     {
         pthread_cond_broadcast(&chef_cond);
         pthread_cond_wait(&(order_ptr[id].order_cond), &(order_ptr[id].order_mutex));
@@ -689,7 +716,8 @@ void *orderinit(void *args)
     pthread_mutex_lock(&restaurant_check);
     if (chefs_working > 0)
     {
-        pthread_mutex_unlock(&restaurant_check);
+        // pthread_mutex_unlock(&restaurant_check);
+        ;
     }
     else
     {
@@ -697,11 +725,13 @@ void *orderinit(void *args)
         printf("Customer %d exits the drive-thru.\n", id);
         reset();
 
-        pthread_mutex_unlock(&(order_ptr[id].order_mutex));
         pthread_mutex_unlock(&restaurant_check);
+        pthread_mutex_unlock(&(order_ptr[id].order_mutex));
         return NULL;
     }
     pthread_mutex_unlock(&restaurant_check);
+
+    // printf("here##########\nid: %d\n", id);
 
     int check = check_order_status(id);
     if (check == 1)
@@ -764,28 +794,35 @@ int main()
     get_input();
     sem_initialisation();
     int i = 0;
+    int *idx = (int *)malloc(sizeof(int));
     while (i < num_customers)
     {
         pthread_mutex_init(&(order_ptr[i].order_mutex), NULL);
+        *idx = i;
         order_ptr[i].thread_id = pthread_create(&(order_ptr[i].order_thread), NULL, orderinit, (void *)(&(order_ptr[i].id)));
+        // order_ptr[i].thread_id = pthread_create(&(order_ptr[i].order_thread), NULL, orderinit, (void *)idx);
         i++;
     }
     i = 0;
     while (i < num_chefs)
     {
         pthread_mutex_init(&(chef_ptr[i].chef_mutex), NULL);
-        chef_ptr[i].thread_id = pthread_create(&(chef_ptr[i].chef_thread), NULL, orderinit, (void *)(&(chef_ptr[i].id)));
+        *idx = i;
+        chef_ptr[i].thread_id = pthread_create(&(chef_ptr[i].chef_thread), NULL, chefinit, (void *)(&(chef_ptr[i].id)));
+        // chef_ptr[i].thread_id = pthread_create(&(chef_ptr[i].chef_thread), NULL, chefinit, (void *)idx);
         i++;
     }
     i = 0;
     while (i < num_customers)
     {
         pthread_join(order_ptr[i].order_thread, NULL);
+        i++;
     }
     i = 0;
     while (i < num_chefs)
     {
         pthread_join(chef_ptr[i].chef_thread, NULL);
+        i++;
     }
     return 0;
 }
