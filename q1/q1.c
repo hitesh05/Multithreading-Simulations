@@ -42,10 +42,10 @@ pthread_cond_t condition_machine;
 
 typedef struct student
 {
+    int arr_time;             // time of arrival
     pthread_t t;
     int id; // for identifying the student
     int thread_id;
-    int arr_time;             // time of arrival
     int alloc_time;           // time when machine gets allocated
     int wash_time;            // time taken to wash clothes
     int patience;             // patience
@@ -71,9 +71,22 @@ sem_t machines;
 
 int comparator(const void *a, const void *b)
 {
-    int x = *(int *)a;
-    int y = *(int *)b;
-    return (x - y);
+    struct student x = *(struct student *)a;
+    struct student y = *(struct student *)b;
+    if(x.arr_time>y.arr_time)
+    {
+        return -1;
+    }
+    else if(x.arr_time<y.arr_time)
+    {
+        return 1;
+    }
+    if(x.id>y.id)
+    {
+        return -1;
+    }
+    return 1;
+
 }
 
 void *student_init(void *args)
