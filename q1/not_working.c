@@ -41,8 +41,8 @@ typedef struct student
     pthread_t t;
     int id; // for identifying the student
     int thread_id;
-    int arr_time; // time of arrival
-    int alloc_time; // time when machine gets allocated
+    int arr_time;             // time of arrival
+    int alloc_time;           // time when machine gets allocated
     int wash_time;            // time taken to wash clothes
     int patience;             // patience
     pthread_mutex_t st_mutex; // mutex lock for student
@@ -77,7 +77,9 @@ void *student_init(void *args)
     //     int arr_time = student_ptr[id]->arr_time;
     //     sleep(student_ptr[id]->arr_time - current_time);
     // }
-    sleep(student_ptr[id]->arr_time);
+    // sleep(student_ptr[id]->arr_time);
+    struct timespec delay = {student_ptr[id]->arr_time, 1000000 * (id + 2)};
+    pselect(0, NULL, NULL, NULL, &delay, NULL);
     // pthread_mutex_lock(&time_mutex);
     // current_time = curr_time;
     // pthread_mutex_unlock(&time_mutex);
@@ -317,6 +319,18 @@ int main()
 
     printf("Simulation beginning.\n");
     sem_initialisation();
+    for (int a = 0; a < N - 1; a++)
+    {
+        for (int b = 0; b < N - 1; b++)
+        {
+            if ((student_ptr[b]->arr_time > student_ptr[b + 1]->arr_time) || ((student_ptr[a]->arr_time == student_ptr[b]->arr_time && ((student_ptr[a]->id < student_ptr[b]->id)))))
+            {
+                struct student *temp = student_ptr[b];
+                student_ptr[b] = student_ptr[a];
+                student_ptr[a] = temp;
+            }
+        }
+    }
 
     count = 0;
     j = 0;
@@ -325,26 +339,9 @@ int main()
         j++;
         pthread_mutex_init(&(student_ptr[j - 1]->st_mutex), NULL);
         student_ptr[j - 1]->thread_id = pthread_create(&(student_ptr[j - 1]->t), NULL, student_init, (void *)(&(student_ptr[j - 1]->id)));
-    }
-
-    while (1)
-    {
-        sleep(1);
-        // pthread_mutex_lock(&time_mutex);
-        // curr_time++;
-        // pthread_mutex_unlock(&time_mutex);
-        pthread_mutex_lock(&goal_time_mutex);
-        goal_curr_time++;
-        pthread_mutex_unlock(&goal_time_mutex);
-        pthread_cond_broadcast(&for_stay);
-
-        pthread_mutex_lock(&another_one);
-        if (count == N)
-        {
-            pthread_mutex_unlock(&another_one);
-            break;
-        }
-        pthread_mutex_unlock(&another_one);
+        sleep(0.001);
+        // struct timespec delay = {0, 200000};
+        // pselect(0, NULL, NULL, NULL, &delay, NULL);
     }
 
     j = 0;

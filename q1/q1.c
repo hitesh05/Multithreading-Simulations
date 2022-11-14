@@ -42,7 +42,7 @@ pthread_cond_t condition_machine;
 
 typedef struct student
 {
-    int arr_time;             // time of arrival
+    int arr_time; // time of arrival
     pthread_t t;
     int id; // for identifying the student
     int thread_id;
@@ -69,31 +69,25 @@ pthread_cond_t for_stay;
 
 sem_t machines;
 
-int comparator(const void *a, const void *b)
-{
-    struct student x = *(struct student *)a;
-    struct student y = *(struct student *)b;
-    if(x.arr_time>y.arr_time)
-    {
-        return -1;
-    }
-    else if(x.arr_time<y.arr_time)
-    {
-        return 1;
-    }
-    if(x.id>y.id)
-    {
-        return -1;
-    }
-    return 1;
-
-}
+// int comparator(const void *a, const void *b)
+// {
+//     struct student* x = (struct student *)a;
+//     struct student* y = (struct student *)b;
+//     printf("%d\n", ((struct student *)a)->arr_time);
+//     if (x->arr_time == y->arr_time)
+//     {
+//         return x->id - y->id;
+//     }
+//     return (x->arr_time - y->arr_time);
+// }
 
 void *student_init(void *args)
 {
     int id = *((int *)args);
 
-    sleep(student_ptr[id]->arr_time);
+    // sleep(student_ptr[id]->arr_time);
+    struct timespec delay = {student_ptr[id]->arr_time, 1000000 * (id+2)};
+    pselect(0, NULL, NULL, NULL, &delay, NULL);
 
     pthread_mutex_lock(&arrival_mutex);
     struct timespec ts;
@@ -101,7 +95,7 @@ void *student_init(void *args)
     pthread_mutex_unlock(&arrival_mutex);
     white();
     // printf("%ld: Student %d arrives\n", ts1.tv_sec - globalstart, id + 1);
-    printf("%d: Student %d arrives\n", student_ptr[id]->arr_time, id + 1);
+    printf("%d: Student %d arrives\n", student_ptr[id]->arr_time, student_ptr[id]->id + 1);
     reset();
 
     pthread_mutex_lock(&machine_mutex);
@@ -116,7 +110,7 @@ void *student_init(void *args)
         rc = pthread_cond_timedwait(&condition_machine, &machine_mutex, &ts1);
         if (rc == ETIMEDOUT)
         {
-            break;
+            goto end;
         }
     }
 
@@ -135,7 +129,7 @@ void *student_init(void *args)
         clock_gettime(CLOCK_REALTIME, &ts1);
         pthread_mutex_unlock(&wash_mutex);
         green();
-        printf("%ld: Student %d starts washing\n", ts1.tv_sec - globalstart, id + 1);
+        printf("%ld: Student %d starts washing\n", ts1.tv_sec - globalstart, student_ptr[id]->id + 1);
         reset();
 
         ts1.tv_sec -= globalstart;
@@ -158,13 +152,14 @@ void *student_init(void *args)
         clock_gettime(CLOCK_REALTIME, &ts2);
         // pthread_mutex_unlock(&wash_mutex2);
         yellow();
-        printf("%ld: Student %d leaves after washing\n", ts2.tv_sec - globalstart, id + 1);
+        printf("%ld: Student %d leaves after washing\n", ts2.tv_sec - globalstart, student_ptr[id]->id + 1);
         reset();
         return NULL;
     }
     pthread_mutex_unlock(&machine_mutex);
 
     // did_not_wash:;
+end:;
     clock_gettime(CLOCK_REALTIME, &ts);
     pthread_mutex_lock(&wash_mutex2);
     ts.tv_sec -= globalstart;
@@ -173,7 +168,7 @@ void *student_init(void *args)
     pthread_mutex_unlock(&wash_mutex2);
 
     red();
-    printf("%ld: Student %d leaves without washing\n", ts.tv_sec, id + 1);
+    printf("%ld: Student %d leaves without washing\n", ts.tv_sec, student_ptr[id]->id + 1);
     reset();
     return NULL;
 }
@@ -211,8 +206,23 @@ int main()
     fflush(stdout);
 
     sem_initialisation();
-
-    qsort(student_ptr, N, sizeof(student *), comparator);
+    for (int a = 0; a < N-1; a++)
+    {
+        for (int b = 0; b < N-1; b++)
+        {
+            if ((student_ptr[b]->arr_time > student_ptr[b+1]->arr_time) || ((student_ptr[a]->arr_time == student_ptr[b]->arr_time && ((student_ptr[a]->id < student_ptr[b]->id)))))
+            {
+                struct student *temp = student_ptr[b];
+                student_ptr[b] = student_ptr[a];
+                student_ptr[a] = temp;
+            }
+        }
+    }
+    // qsort(student_ptr, N, sizeof(student *), comparator);
+    // for (int i = 0; i < N; i++)
+    // {
+    //     printf("%d\n", student_ptr[i]->id);
+    // }
 
     clock_gettime(CLOCK_REALTIME, &ts);
     globalstart = ts.tv_sec;
@@ -224,6 +234,8 @@ int main()
         pthread_mutex_init(&(student_ptr[j - 1]->st_mutex), NULL);
         student_ptr[j - 1]->thread_id = pthread_create(&(student_ptr[j - 1]->t), NULL, student_init, (void *)(&(student_ptr[j - 1]->id)));
         sleep(0.001);
+        // struct timespec delay = {0, 200000};
+        // pselect(0, NULL, NULL, NULL, &delay, NULL);
     }
 
     j = 0;

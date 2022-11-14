@@ -143,11 +143,11 @@ pthread_cond_t drive_next;
 pthread_cond_t chef_cond;
 pthread_cond_t chef_cond_for_oven;
 
-int *order_pizza_q;
-int *order_pizza_id_q;
 int REAR = -1;
 int FRONT = -1;
 int SIZE = 0;
+int *order_pizza_q;
+int *order_pizza_id_q;
 
 void enqueue(int x, int y)
 {
@@ -189,10 +189,14 @@ void get_input()
     scanf("%d %d %d %d %d %d", &num_chefs, &num_pizza_varieties, &num_limited_ingreds, &num_customers, &num_ovens, &reach_pickup_time);
     drive_thru_max_customers = num_customers;
 
-    order_ptr = (order *)malloc(sizeof(order) * num_customers);
-    chef_ptr = (chef *)malloc(sizeof(chef) * num_chefs);
-    pizza_ptr = (pizza *)malloc(sizeof(pizza) * num_pizza_varieties);
-    ingredient_ptr = (ingredient *)malloc(sizeof(ingredient) * num_limited_ingreds);
+    int x = sizeof(order);
+    order_ptr = (order *)malloc(x * num_customers);
+    x = sizeof(chef);
+    chef_ptr = (chef *)malloc(x * num_chefs);
+    x = sizeof(pizza);
+    pizza_ptr = (pizza *)malloc(x * num_pizza_varieties);
+    x = sizeof(ingredient);
+    ingredient_ptr = (ingredient *)malloc(x * num_limited_ingreds);
     oven_ptr = (int *)malloc(sizeof(int) * num_ovens);
     chefs_working = num_chefs;
     write_pizza_locks = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t) * num_customers);
@@ -523,7 +527,7 @@ chef1:;
     reset();
 
     pthread_mutex_lock(&oven_mutex);
-    oven_ptr[ovenid] = 0;
+    oven_ptr[ovenid] = false;
     pthread_mutex_unlock(&oven_mutex);
 
     order_ptr[order_id].new_pizza = pizza_id;
@@ -544,7 +548,8 @@ end:;
         // printf("here##########\nid: %d\n", id);
 
         order_ptr[order_id].num_pizzas_processed += 1;
-        if (order_ptr[order_id].num_pizzas_processed == order_ptr[order_id].num_pizzas)
+        int check = (order_ptr[order_id].num_pizzas_processed == order_ptr[order_id].num_pizzas);
+        if (check)
         {
             pthread_cond_signal(&(order_ptr[order_id].order_cond));
         }
@@ -811,6 +816,6 @@ int main()
         pthread_join(chef_ptr[i].chef_thread, NULL);
         i++;
     }
-    printf("Simulation Ended.\n");
+    printf("Simulation Over.\n");
     return 0;
 }

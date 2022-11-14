@@ -38,7 +38,8 @@ const LL MOD = 1000000007;
 #define debug(x) cout << #x << " : " << x << endl
 
 ///////////////////////////////
-#define SERVER_PORT 8001
+// #define SERVER_PORT 8001
+#define SERVER_PORT 1111111
 ////////////////////////////////////
 
 const LL buff_sz = 1048576;

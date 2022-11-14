@@ -11,7 +11,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <pthread.h>
-
+#include <semaphore.h>
 /////////////////////////////
 #include <iostream>
 #include <assert.h>
@@ -32,13 +32,19 @@ using namespace std;
 typedef long long LL;
 
 #define pb push_back
+#define zero 0
 #define debug(x) cout << #x << " : " << x << endl
 #define part cout << "-----------------------------------" << endl;
 
+#define pp pair<int, int>
+#define vi vector<int>
+#define vb vector<bool>
+#define vv vector<pp>
+
 ///////////////////////////////
 #define MAX_CLIENTS 4
-// #define PORT_ARG 1111111
-#define PORT_ARG 8001
+#define PORT_ARG 1111111
+// #define PORT_ARG 8001
 
 const int initial_msg_len = 256;
 
@@ -49,25 +55,63 @@ const LL buff_sz = 1048576;
 
 int port = 121001;
 
-typedef struct edge_thread
-{
-    int index;
-    int sender;
-    int receiver;
-    pthread_t thread;
-    int sender_fd;
-    int receiver_fd;
-    int port_number;
-} * edge;
+pthread_mutex_t mutex_lock;
+sem_t semaphore;
+pthread_cond_t cond;
 
-struct temp
+// typedef struct edge_thread
+// {
+//     int index;
+//     int sender;
+//     int receiver;
+//     pthread_t thread;
+//     int sender_fd;
+//     int receiver_fd;
+//     int port_number;
+// } * edge;
+
+typedef struct edge
 {
+    pthread_t t;
+    int index;
+    int port_num;
+    int receiver;
+    int receiver_fd;
+    int sender;
+    int sender_fd;
+    edge(int a, int b, int c, int d)
+    {
+        index = a;
+        sender = b;
+        receiver = c;
+        port_num = d;
+    }
+} edge;
+
+typedef struct thread_arg
+{
+    edge *t;
+    int n;
+    int m;
+    vector<edge *> edge_links;
+    vector<vv> edges_index;
+    vector<vi> frw;
     int *index;
-    edge thread;
-    vector<vector<int>> v;
-    vector<vector<pair<int, int>>> v1;
-    vector<edge> v2;
-};
+    thread_arg(vector<edge *> a, vector<vv> b, vector<vi> c, edge *d, int e, int f)
+    {
+        edge_links = a;
+        edges_index = b;
+        frw = c;
+        t = d;
+        n = e;
+        m = f;
+    }
+} thread_st;
+
+int source = zero;
+int backward = zero;
+int forward_dest = zero;
+int destination = zero;
 
 pair<string, int>
 read_string_from_socket(const int &fd, int bytes)
@@ -100,14 +144,19 @@ int send_string_on_socket(int fd, const string &s)
     return bytes_sent;
 }
 
-int source = 0;
-int backward = 0;
-int forward_dest = 0;
-int destination = 0;
-
 ///////////////////////////////
+void print_statement(string cmd)
+{
+    cout << "Data received at node : " << source << " : ";
+    cout << "Source : " << backward << "; ";
+    cout << "Destination : " << destination << "; ";
+    cout << "Forwarded Destination : " << forward_dest << "; ";
+    cout << "Message : " << cmd << endl;
+    // cout << "here" << endl;
+    return;
+}
 
-void handle_connection(int client_socket_fd, vector<vector<int>> &frw, vector<vector<pair<int, int>>> &edges_index, vector<edge> &edges, vector<int> &d)
+void handle_connection(int client_socket_fd, int n, int m, vector<vv> adj, vi d, vi p, vector<vi> frw, vector<edge *> edges, vector<vv> edges_index)
 {
     // int client_socket_fd = *((int *)client_socket_fd_ptr);
     //####################################################
@@ -117,13 +166,18 @@ void handle_connection(int client_socket_fd, vector<vector<int>> &frw, vector<ve
     /* read message from client */
     int ret_val = 1;
 
-    while (true)
+    while (1)
     {
         string cmd;
         tie(cmd, received_num) = read_string_from_socket(client_socket_fd, buff_sz);
         ret_val = received_num;
+        string final_str = "dest forw delay\n";
+
         // debug(ret_val);
         // printf("Read something\n");
+        string s[2];
+        s[0] = "pt";
+        s[1] = "send";
         if (ret_val <= 0)
         {
             // perror("Error read()");
@@ -136,85 +190,97 @@ void handle_connection(int client_socket_fd, vector<vector<int>> &frw, vector<ve
             cout << "Exit pressed by client" << endl;
             goto close_client_socket_ceremony;
         }
-        else if (cmd == "pt")
+        else if (cmd[0] == s[1][0])
         {
-            string s;
-            string s1 = "dest";
-            string s2 = "forw";
-            string s3 = "delay";
-            s += s1;
-            s += " ";
-            s += s2;
-            s += " ";
-            s += s3;
-            s += "\n";
-
-            send_string_on_socket(client_socket_fd, s);
-
-            for (int i = 1; i < d.size(); i++)
+            string empty_str = "";
+            string token = empty_str;
+            int index = 0;
+            index--;
+            int size = cmd.size();
+            for (int i = 0; i < size; i++)
             {
-                string temp;
-                temp += to_string(i);
-                temp += "   ";
-                temp += to_string(frw[0][i]);
-                temp += "   ";
-                temp += to_string(d[i]);
-                temp += "\n";
-
-                send_string_on_socket(client_socket_fd, temp);
-            }
-        }
-        else
-        {
-            string token;
-            int index;
-            for (int i = 0; i < cmd.size(); i++)
-            {
-                if (cmd[i] == ' ')
+                char emp = ' ';
+                if (cmd[i] == emp)
                 {
                     index = i;
-                    for (int j = i + 2; j < cmd.size(); j++)
+                    i += 2;
+                    for (int j = i; j < size; j++)
                     {
-                        token.push_back(cmd[j]);
+                        token += cmd[j];
                     }
                     break;
                 }
             }
 
-            destination = cmd[index + 1] - '0';
+            index++;
+            // int abc = '0';
+            destination = cmd[index] - '0';
 
             forward_dest = frw[source][destination];
-            cout << "Data received at node : " << source << " ; "
-                 << "Source : " << backward << " ; "
-                 << "Destination : " << destination << " ; "
-                 << " Forwaded_Destination : " << forward_dest << " ; "
-                 << "Message : " << token << " ; " << endl;
+            print_statement(token);
 
             int edge_index;
-            for (int i = 0; i < edges_index[source].size(); i++)
+            int size2 = edges_index[source].size();
+            int y = 0;
+            while (y < size2)
             {
-                if (edges_index[source][i].first == forward_dest)
+                int checker = edges_index[source][y].first;
+                if (checker == forward_dest)
                 {
-                    edge_index = edges_index[source][i].second;
+                    edge_index = edges_index[source][y].second;
                     break;
                 }
+                y++;
             }
+            // cout << "edge index: " << edge_index << endl;
             backward = source;
             source = forward_dest;
-            send_string_on_socket(edges[edge_index]->sender_fd, token);
+            int x2 = edges[edge_index]->sender_fd;
+            // cout << "x2: " << x2 << endl;
+            send_string_on_socket(x2, token);
 
             while (source != destination)
             {
                 continue;
             }
+            source = zero;
+            backward = zero;
+            forward_dest = zero;
+            destination = zero;
         }
+        else if (cmd == s[0])
+        {
+            string empty_str = "";
+
+            // send_string_on_socket(client_socket_fd, s);
+            int y = 1;
+            int size = d.size();
+            while (y < size)
+            {
+                string temp = empty_str;
+                string y_str = to_string(y);
+                string frw_str = to_string(frw[0][y]);
+                string d_str = to_string(d[y]);
+                temp.append(y_str);
+                temp.append(" ");
+                temp.append(frw_str);
+                temp.append(" ");
+                temp.append(d_str);
+                temp.append("\n");
+                final_str.append(temp);
+                y++;
+            }
+        }
+        //////////////////
+        ////////////////////
         string msg_to_send_back = "Ack: " + cmd;
+        final_str.append(msg_to_send_back);
 
         ////////////////////////////////////////
         // "If the server write a message on the socket and then close it before the client's read. Will the client be able to read the message?"
         // Yes. The client will get the data that was sent before the FIN packet that closes the socket.
 
-        int sent_to_client = send_string_on_socket(client_socket_fd, msg_to_send_back);
+        int sent_to_client = send_string_on_socket(client_socket_fd, final_str);
         // debug(sent_to_client);
         if (sent_to_client == -1)
         {
@@ -269,11 +335,12 @@ int get_socket_fd(struct sockaddr_in *ptr, int port)
     return socket_fd;
 }
 
-void *thread_func(void *arg)
+void *func_thread(void *arg)
 {
-    struct temp tmp = *(struct temp *)arg;
+    // struct temp tmp = *(struct temp *)arg;
+    thread_st *args = (thread_st *)arg;
 
-    int i, j, k, t;
+    // int i, j, k, t;
 
     int wel_socket_fd, client_socket_fd, port_number;
     socklen_t clilen;
@@ -303,7 +370,7 @@ void *thread_func(void *arg)
     serv_addr_obj.sin_family = AF_INET;
     // On the server side I understand that INADDR_ANY will bind the port to all available interfaces,
     serv_addr_obj.sin_addr.s_addr = INADDR_ANY;
-    serv_addr_obj.sin_port = htons(tmp.thread->port_number); // process specifies port
+    serv_addr_obj.sin_port = htons(args->t->port_num); // process specifies port
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////
     /* bind socket to this port number on this machine */
@@ -326,18 +393,20 @@ void *thread_func(void *arg)
     listen(wel_socket_fd, MAX_CLIENTS);
     clilen = sizeof(client_addr_obj);
 
-// new 
-    tmp.thread->receiver_fd = wel_socket_fd;
+    // new
+    args->t->receiver_fd = wel_socket_fd;
 
     struct sockaddr_in server_obj;
-    int socket_fd = get_socket_fd(&server_obj, tmp.thread->port_number);
+    int port_num = args->t->port_num;
+    int socket_fd = get_socket_fd(&server_obj, port_num);
 
-    tmp.thread->sender_fd = socket_fd;
-//
+    args->t->sender_fd = socket_fd;
+    //
 
     while (1)
     {
-        int client_socket_fd = accept(tmp.thread->receiver_fd, (struct sockaddr *)&client_addr_obj, &clilen);
+        int x = args->t->receiver_fd;
+        int client_socket_fd = accept(x, (struct sockaddr *)&client_addr_obj, &clilen);
         if (client_socket_fd < 0)
         {
             perror("ERROR while accept() system call occurred in SERVER");
@@ -354,28 +423,33 @@ void *thread_func(void *arg)
             string cmd;
             tie(cmd, received_num) = read_string_from_socket(client_socket_fd, buff_sz);
             ret_val = received_num;
-
-            if (source != destination)
+            int check = source - destination;
+            if (check == 0)
             {
-                forward_dest = tmp.v[source][destination];
-                cout << "Data received at node : " << source << " ; "
-                     << "Source : " << backward << " ; "
-                     << "Destination : " << destination << " ; "
-                     << " Forwaded_Destination : " << forward_dest << " ; "
-                     << "Message : " << cmd << " ; " << endl;
+                ;
+            }
+            else
+            {
+                forward_dest = args->frw[source][destination];
+                print_statement(cmd);
 
                 int edge_index;
-                for (int i = 0; i < tmp.v1[source].size(); i++)
+                int size = args->edges_index[source].size();
+                int y = 0;
+                while (y < size)
                 {
-                    if (tmp.v1[source][i].first == forward_dest)
+                    int checker = args->edges_index[source][y].first;
+                    if (checker == forward_dest)
                     {
-                        edge_index = tmp.v1[source][i].second;
+                        edge_index = args->edges_index[source][y].second;
                         break;
                     }
+                    y++;
                 }
-                send_string_on_socket(tmp.v2[edge_index]->sender_fd, cmd);
                 backward = source;
                 source = forward_dest;
+                int x2 = args->edge_links[edge_index]->sender_fd;
+                send_string_on_socket(x2, cmd);
             }
         }
     }
@@ -383,53 +457,83 @@ void *thread_func(void *arg)
     return NULL;
 }
 
-int restore_path(int s, int t, vector<int> const &p)
+int restore_path(int s, int t, vi const &p)
 {
-    vector<int> path;
-
-    for (int v = t; v != s; v = p[v])
+    vi path;
+    int v = t - 1;
+    v++;
+    while (v != s)
+    {
         path.push_back(v);
+        v = p[v];
+    }
     path.push_back(s);
 
     reverse(path.begin(), path.end());
-    return path[1];
+    int x = 1;
+    // frw[s][t] = path[x];
+    return path[x];
 }
 
 const int INF = 1000000000;
 
-void dijkstra(int s, vector<int> &d, vector<int> &p, vector<vector<pair<int, int>>> &adj)
+void dijkstra(int s, vi &d, vi &p, vector<vector<pair<int, int>>> &adj)
 {
     int n = adj.size();
-    d.assign(n, INF);
-    p.assign(n, -1);
-    vector<bool> u(n, false);
-
-    d[s] = 0;
+    // p.assign(n, -1);
+    // vector<bool> u(n, false);
+    vi visited(n);
     for (int i = 0; i < n; i++)
     {
-        int v = -1;
-        for (int j = 0; j < n; j++)
+        visited[i] = 0;
+        p[i] = -1;
+    }
+    d.assign(n, 1000000);
+
+    int x = 0;
+    d[s] = x;
+
+    int i = 0;
+    while (i < n)
+    {
+        int u = -1;
+        int j = 0;
+        while (j < n)
         {
-            if (!u[j] && (v == -1 || d[j] < d[v]))
-                v = j;
+            if (visited[j] == 0 && (u == -1 || d[j] < d[u]))
+                u = j;
+            j++;
         }
-
-        if (d[v] == INF)
-            break;
-
-        u[v] = true;
-        for (auto edge : adj[v])
+        if (d[u] != 1000000)
         {
-            int to = edge.first;
-            int len = edge.second;
-
-            if (d[v] + len < d[to])
+            visited[u] = 1;
+            for (auto x : adj[u])
             {
-                d[to] = d[v] + len;
-                p[to] = v;
+                if (d[u] + x.second >= d[x.first])
+                {
+                    ;
+                }
+                else
+                {
+                    p[x.first] = u;
+                    d[x.first] = d[u] + x.second;
+                }
             }
         }
+        else
+        {
+            break;
+        }
+        i++;
     }
+}
+
+void sem_initialisation()
+{
+    sem_init(&semaphore, 0, 0);
+    pthread_mutex_init(&mutex_lock, NULL);
+
+    pthread_cond_init(&cond, NULL);
 }
 
 int main(int argc, char *argv[])
@@ -437,63 +541,63 @@ int main(int argc, char *argv[])
     int n, m;
     cin >> n >> m;
 
-    vector<edge> edges(2 * m);
-    vector<vector<pair<int, int>>> edges_index(n);
-    vector<vector<pair<int, int>>> adj(n);
-    vector<int> d(n);
-    vector<int> p(n);
+    int x = 2 * m;
+    vector<edge *> edges(x);
+    vector<vv> edges_index(n);
+    vector<vv> adj(n);
+    vi d(n);
+    vi p(n);
+    sem_initialisation();
 
     for (int i = 0; i < m; i++)
     {
-        int a, b, d;
-        cin >> a >> b >> d;
-        int i1 = i * 2;
-        int i2 = (2 * i) + 1;
-        edges[i1] = (edge)malloc(sizeof(struct edge_thread));
-        edges[i2] = (edge)malloc(sizeof(struct edge_thread));
-        edges[i1]->index = i1;
-        edges[i2]->index = i2;
-        edges[i1]->receiver = a;
-        edges[i2]->receiver = b;
-        edges[i1]->sender = b;
-        edges[i2]->sender = a;
-        edges[i1]->port_number = ++port;
-        edges[i2]->port_number = ++port;
-        edges_index[a].push_back({b, i1});
-        edges_index[b].push_back({a, i2});
-        adj[a].push_back({b, d});
-        adj[b].push_back({a, d});
+        int a, b;
+        int u, v, w;
+        cin >> u >> v >> w;
+
+        a = 2 * i;
+        b = a + port;
+        edge *e1 = new edge(a, u, v, b);
+        // cout << "here1" << endl;
+        edges[a] = e1;
+        // cout << "here2" << endl;
+
+        a += 1;
+        b = a + port;
+        edge *e2 = new edge(a, u, v, b);
+        edges[a] = e2;
+
+        a = 2 * i;
+        edges_index[u].pb({v, a});
+        a++;
+        edges_index[v].pb({u, a});
+
+        adj[v].pb({u, w});
+        adj[u].pb({v, w});
     }
 
-    vector<vector<int>> frw;
-
-    for (int i = 0; i < n; i++)
+    vector<vi> frw(n, vi(n, -1));
+    int y = 0;
+    while (y < n)
     {
-        vector<int> temp;
-        for (int i = 0; i < n; i++)
+        dijkstra(y, d, p, adj);
+        int z = 0;
+        while (z < n)
         {
-            temp.push_back(-1);
-        }
-        frw.push_back(temp);
-    }
-
-    for (int i = 0; i < n; i++)
-    {
-        dijkstra(i, d, p, adj);
-        for (int j = 0; j < n; j++)
-        {
-            if (i != j)
+            if (y == z)
             {
-                frw[i][j] = restore_path(i, j, p);
+                frw[y][z] = z;
             }
-            else
+            else if (y != z)
             {
-                frw[i][j] = j;
+                frw[y][z] = restore_path(y, z, p);
             }
+            z++;
         }
+        y++;
     }
-
-    dijkstra(0, d, p, adj);
+    y = 0;
+    dijkstra(y, d, p, adj);
 
     int i, j, k, t;
 
@@ -549,17 +653,14 @@ int main(int argc, char *argv[])
     cout << "Server has started listening on the LISTEN PORT" << endl;
     clilen = sizeof(client_addr_obj);
 
-    for (int i = 0; i < 2 * m; i++)
+    x = 2 * m;
+    y = 0;
+    while (y < x)
     {
-        struct temp *tmp = (struct temp *)malloc(sizeof(struct temp));
-        tmp->index = &i;
-        tmp->thread = edges[i];
-        tmp->v = frw;
-        tmp->v1 = edges_index;
-        tmp->v2 = edges;
-        pthread_create(&edges[i]->thread, NULL, thread_func, tmp);
+        thread_arg *arg = new thread_arg(edges, edges_index, frw, edges[y], n, m);
+        pthread_create(&edges[y]->t, NULL, func_thread, (void *)arg);
+        y++;
     }
-
     while (1)
     {
         /* accept a new request, create a client_socket_fd */
@@ -579,12 +680,15 @@ more precisely, a new socket that is dedicated to that particular client.
 
         printf(BGRN "New client connected from port number %d and IP %s \n" ANSI_RESET, ntohs(client_addr_obj.sin_port), inet_ntoa(client_addr_obj.sin_addr));
 
-        handle_connection(client_socket_fd, frw, edges_index, edges, d);
+        handle_connection(client_socket_fd, n, m, adj, d, p, frw, edges, edges_index);
     }
 
-    for (int i = 0; i < 2 * m; i++)
+    y = 0;
+    x = 2 * m;
+    while (y < x)
     {
-        pthread_join(edges[i]->thread, NULL);
+        pthread_join(edges[y]->t, NULL);
+        y++;
     }
 
     close(wel_socket_fd);
