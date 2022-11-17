@@ -346,50 +346,27 @@ void *func_thread(void *arg)
     socklen_t clilen;
 
     struct sockaddr_in serv_addr_obj, client_addr_obj;
-    /////////////////////////////////////////////////////////////////////////
-    /* create socket */
-    /*
-    The server program must have a special door—more precisely,
-    a special socket—that welcomes some initial contact
-    from a client process running on an arbitrary host
-    */
-    // get welcoming socket
-    // get ip,port
-    /////////////////////////
+
     wel_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (wel_socket_fd < 0)
+    if(wel_socket_fd >= 0){
+        ;
+    }
+    else
     {
         perror("ERROR creating welcoming socket");
         exit(-1);
     }
-
-    //////////////////////////////////////////////////////////////////////
-    /* IP address can be anything (INADDR_ANY) */
     bzero((char *)&serv_addr_obj, sizeof(serv_addr_obj));
     port_number = PORT_ARG;
     serv_addr_obj.sin_family = AF_INET;
     // On the server side I understand that INADDR_ANY will bind the port to all available interfaces,
     serv_addr_obj.sin_addr.s_addr = INADDR_ANY;
-    serv_addr_obj.sin_port = htons(args->t->port_num); // process specifies port
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /* bind socket to this port number on this machine */
-    /*When a socket is created with socket(2), it exists in a name space
-       (address family) but has no address assigned to it.  bind() assigns
-       the address specified by addr to the socket referred to by the file
-       descriptor wel_sock_fd.  addrlen specifies the size, in bytes, of the
-       address structure pointed to by addr.  */
-
-    // CHECK WHY THE CASTING IS REQUIRED
+    serv_addr_obj.sin_port = htons(args->t->port_num); 
     if (bind(wel_socket_fd, (struct sockaddr *)&serv_addr_obj, sizeof(serv_addr_obj)) < 0)
     {
         perror("Error on bind on welcome socket: ");
         exit(-1);
     }
-    //////////////////////////////////////////////////////////////////////////////////////
-
-    /* listen for incoming connection requests */
-
     listen(wel_socket_fd, MAX_CLIENTS);
     clilen = sizeof(client_addr_obj);
 

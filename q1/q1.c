@@ -110,7 +110,7 @@ void *student_init(void *args)
         rc = pthread_cond_timedwait(&condition_machine, &machine_mutex, &ts1);
         if (rc == ETIMEDOUT)
         {
-            goto end;
+            break;
         }
     }
 

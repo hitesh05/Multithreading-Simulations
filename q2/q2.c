@@ -332,6 +332,7 @@ void *chefinit(void *args)
     int id = *((int *)args);
 
     int rejected_due_to_time = false;
+    int rejected_due_to_ovens = false;
 
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -411,14 +412,15 @@ start:
     int total_pizzas = order_ptr[order_id].num_pizzas;
 
     blue();
-    printf("Pizza %d in order %d assigned to chef %d\n", id + 1, pizza_id + 1, order_id + 1);
+    printf("Pizza %d in order %d assigned to chef %d\n", pizza_id + 1, order_id + 1, id + 1);
     reset();
 
     dequeue();
     pthread_mutex_unlock(&pizza_queue);
 
     clock_gettime(CLOCK_REALTIME, &ts);
-    int check_time = (chef_ptr[id].arr_time + pizza_ptr[pizza_id].prep_time); // time left comapred with time taken to prepare pizza
+    int check_time = (chef_ptr[id].arr_time + pizza_ptr[pizza_id].prep_time + (ts.tv_sec - globaltime)); // time left comapred with time taken to prepare pizza
+    
     if (check_time > chef_ptr[id].exit_time)
     {
         blue();
@@ -474,6 +476,11 @@ start:
     sleep(3); // time taken to get hold of ingredients
 
     pthread_mutex_lock(&oven_mutex);
+    if(num_ovens==0){
+        rejected_due_to_ovens = true;
+        pthread_mutex_unlock(&oven_mutex);
+        goto end;
+    }
     i = 0;
     int ovenid = 0;
     while (i < num_ovens)
@@ -492,6 +499,8 @@ start:
     // HANDLE THE CASE WHEN OVN DOESN'T GET ALLOCATED//
     ///******************************
     struct timespec oven_time;
+    clock_gettime(CLOCK_REALTIME, &oven_time);
+    // int wait_oven_time = 
     oven_time.tv_sec = chef_ptr[id].exit_time - pizza_ptr[pizza_id].prep_time;
     rc = pthread_cond_timedwait(&chef_cond_for_oven, &oven_mutex, &oven_time);
     if (rc == ETIMEDOUT)
@@ -540,7 +549,7 @@ end:;
     {
         pthread_mutex_lock(&pizza_queue);
         enqueue(pizza_id, order_id);
-        pthread_mutex_lock(&pizza_queue);
+        pthread_mutex_unlock(&pizza_queue);
     }
     else if (rejected_due_to_time == false)
     {
@@ -659,7 +668,7 @@ void *orderinit(void *args)
     // printf("reach prickup time: %d\n", reach_pickup_time);
 
     // now the driver will take some time to reach pickup point
-    // sleep(reach_pickup_time);
+    sleep(reach_pickup_time);
 
     // printf("here##########\nid: %d\n", id);
 
